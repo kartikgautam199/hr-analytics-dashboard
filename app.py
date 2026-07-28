@@ -57,7 +57,27 @@ fig = px.pie(
     names="Attrition",
     title="Employee Attrition"
 )
+ine_data = (
+    filtered_df.groupby("YearsAtCompany")["MonthlyIncome"]
+    .mean()
+    .reset_index()
+)
 
+fig_line = px.line(
+    line_data,
+    x="YearsAtCompany",
+    y="MonthlyIncome",
+    title="Average Monthly Income by Years at Company",
+    markers=True
+)
+
+fig_line.update_layout(
+    xaxis_title="Years at Company",
+    yaxis_title="Average Monthly Income",
+    template="plotly_white"
+)
+
+st.plotly_chart(fig_line, use_container_width=True)
 st.plotly_chart(fig, use_container_width=True)
 dept = filtered_df.groupby("Department").size().reset_index(name="Employees")
 
