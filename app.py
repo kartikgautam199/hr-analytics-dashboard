@@ -57,7 +57,7 @@ fig = px.pie(
     names="Attrition",
     title="Employee Attrition"
 )
-ine_data = (
+line_data = (
     filtered_df.groupby("YearsAtCompany")["MonthlyIncome"]
     .mean()
     .reset_index()
