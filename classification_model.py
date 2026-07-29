@@ -1,73 +1,66 @@
-# ===========================================
-# HR Analytics - Logistic Regression
-# Employee Attrition Prediction
-# ===========================================
-
 import pandas as pd
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+from sklearn.metrics import (
+    accuracy_score,
+    confusion_matrix,
+    classification_report
+)
 
-# ===========================================
+from xgboost import XGBClassifier
+
+# ===================================
 # Load Dataset
-# ===========================================
+# ===================================
 
 df = pd.read_csv("WA_Fn-UseC_-HR-Employee-Attrition.csv")
 
-print("Dataset Loaded Successfully\n")
-print(df.head())
+# ===================================
+# Drop Unnecessary Columns
+# ===================================
 
-# ===========================================
-# Remove Unnecessary Columns
-# ===========================================
-
-drop_columns = [
+drop_cols = [
     "EmployeeCount",
     "EmployeeNumber",
     "Over18",
     "StandardHours"
 ]
 
-df.drop(columns=drop_columns, inplace=True)
+df.drop(columns=drop_cols, inplace=True)
 
-# ===========================================
-# Encode All Categorical Columns
-# ===========================================
+# ===================================
+# Encode Target Variable
+# ===================================
 
-# -------------------------------
-# Convert Categorical Columns
-# -------------------------------
+df["Attrition"] = df["Attrition"].map({
+    "No": 0,
+    "Yes": 1
+})
 
-from sklearn.preprocessing import LabelEncoder
+# ===================================
+# Encode Categorical Features
+# ===================================
 
-le = LabelEncoder()
+encoder = LabelEncoder()
 
-# Find all categorical columns
-cat_cols = df.select_dtypes(include=["object"]).columns
+for col in df.columns:
 
-print("Categorical Columns:", cat_cols)
+    if df[col].dtype == "object":
 
-# Encode each categorical column
-for col in cat_cols:
-    df[col] = le.fit_transform(df[col])
+        df[col] = encoder.fit_transform(df[col])
 
-print("\nRemaining Object Columns:")
-print(df.select_dtypes(include=["object"]).columns.tolist())
-
-# -------------------------------
+# ===================================
 # Features and Target
-# -------------------------------
+# ===================================
 
 X = df.drop("Attrition", axis=1)
+
 y = df["Attrition"]
 
-print("\nData Types of X:")
-print(X.dtypes)
-# ===========================================
-# Train-Test Split
-# ===========================================
+# ===================================
+# Train Test Split
+# ===================================
 
 X_train, X_test, y_train, y_test = train_test_split(
     X,
@@ -77,97 +70,68 @@ X_train, X_test, y_train, y_test = train_test_split(
     stratify=y
 )
 
-# ===========================================
-# Logistic Regression Model
-# ===========================================
+# ===================================
+# XGBoost Model
+# ===================================
 
-model = LogisticRegression(
-    max_iter=2000,
-    solver="liblinear"
+model = XGBClassifier(
+
+    n_estimators=500,
+    learning_rate=0.03,
+    max_depth=4,
+    subsample=0.9,
+    colsample_bytree=0.8,
+    min_child_weight=2,
+    gamma=0.1,
+    objective="binary:logistic",
+    eval_metric="logloss",
+    random_state=42
 )
 
-# ===========================================
-# Train Model
-# ===========================================
+# ===================================
+# Train
+# ===================================
 
-print("\nColumns still having object datatype:")
-print(X_train.select_dtypes(include=["object"]).columns)
-
-print("\nObject Columns Data:")
-print(X_train.select_dtypes(include=["object"]).head())
-print(X_train.dtypes)
 model.fit(X_train, y_train)
 
-print("\nModel Trained Successfully")
-
-# ===========================================
+# ===================================
 # Prediction
-# ===========================================
+# ===================================
 
 y_pred = model.predict(X_test)
 
-# ===========================================
-# Accuracy
-# ===========================================
+# ===================================
+# Results
+# ===================================
 
 accuracy = accuracy_score(y_test, y_pred)
 
-print("\nAccuracy : {:.2f}%".format(accuracy * 100))
+cm = confusion_matrix(y_test, y_pred)
 
-# ===========================================
-# Confusion Matrix
-# ===========================================
+report = classification_report(
+    y_test,
+    y_pred,
+    output_dict=True
+)
+
+print("\n========== XGBoost ==========")
+print(f"Accuracy : {accuracy*100:.2f}%")
 
 print("\nConfusion Matrix")
-print(confusion_matrix(y_test, y_pred))
-
-# ===========================================
-# Classification Report
-# ===========================================
+print(cm)
 
 print("\nClassification Report")
 print(classification_report(y_test, y_pred))
 
-# ===========================================
+# ===================================
 # Sample Prediction
-# ===========================================
+# ===================================
 
 sample = X.iloc[[0]]
 
 prediction = model.predict(sample)
 
-print("\nSample Prediction")
-
 if prediction[0] == 1:
-    print("Employee is likely to Leave")
+    print("\nPrediction : Employee is likely to Leave")
 else:
-    print("Employee is likely to Stay")
-
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
-
-# Create Random Forest Model
-model = RandomForestClassifier(
-    n_estimators=100,
-    random_state=42
-)
-
-# Train Model
-model.fit(X_train, y_train)
-
-print("\nRandom Forest Model Trained Successfully")
-
-# Prediction
-y_pred = model.predict(X_test)
-
-# Accuracy
-accuracy = accuracy_score(y_test, y_pred)
-print("\nAccuracy:", round(accuracy * 100, 2), "%")
-
-# Confusion Matrix
-print("\nConfusion Matrix")
-print(confusion_matrix(y_test, y_pred))
-
-# Classification Report
-print("\nClassification Report")
-print(classification_report(y_test, y_pred))
+    print("\nPrediction : Employee is likely to Stay")
