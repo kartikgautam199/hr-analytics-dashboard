@@ -2,30 +2,48 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-st.set_page_config(page_title="HR Analytics Dashboard", layout="wide")
+from classification_model import train_model
 
+st.set_page_config(page_title="HR Analytics Dashboard", layout="wide")
 
 st.title("📊 HR Analytics Dashboard")
 st.write("Employee Attrition Analysis")
 
+DATA_PATH = "WA_Fn-UseC_-HR-Employee-Attrition-encoded.xls"
 
-df = pd.read_csv("WA_Fn-UseC_-HR-Employee-Attrition.csv")
-df
+
+@st.cache_data
+def load_data(path: str) -> pd.DataFrame:
+    # Despite the .xls extension, the file contents are plain CSV.
+    df = pd.read_csv(path)
+    # Attrition is already encoded as 0/1; keep a readable label alongside
+    # it for charts and filters that read better as text.
+    df["AttritionLabel"] = df["Attrition"].map({0: "No", 1: "Yes"})
+    return df
+
+
+@st.cache_resource
+def get_model_results():
+    # Cached so the model trains once per app session instead of on
+    # every filter click / rerun.
+    return train_model(DATA_PATH)
+
+
+df = load_data(DATA_PATH)
+
+st.dataframe(df, use_container_width=True)
+
 st.sidebar.header("KARTIK GAUTAM")
 st.sidebar.header("Filters")
-department = st.sidebar.radio(
-    "Select Department",
-    ["All"] + list(df["Department"].unique())
-)
 
-gender = st.sidebar.radio(
-    "Select Gender",
-    ["All"] + list(df["Gender"].unique())
+department = st.sidebar.selectbox(
+    "Select Department", ["All"] + sorted(df["Department"].unique().tolist())
 )
-
-job_role = st.sidebar.radio(
-    "Select Job Role",
-    ["All"] + list(df["JobRole"].unique())
+gender = st.sidebar.selectbox(
+    "Select Gender", ["All"] + sorted(df["Gender"].unique().tolist())
+)
+job_role = st.sidebar.selectbox(
+    "Select Job Role", ["All"] + sorted(df["JobRole"].unique().tolist())
 )
 
 filtered_df = df.copy()
@@ -39,103 +57,91 @@ if gender != "All":
 if job_role != "All":
     filtered_df = filtered_df[filtered_df["JobRole"] == job_role]
 
-
 total = len(filtered_df)
-attrition = len(filtered_df[filtered_df["Attrition"] == "Yes"])
-rate = (attrition / total) * 100
-avg_income = filtered_df["MonthlyIncome"].mean()
+attrition = int((filtered_df["Attrition"] == 1).sum())
+rate = (attrition / total * 100) if total else 0.0
+avg_income = filtered_df["MonthlyIncome"].mean() if total else 0.0
 
 col1, col2, col3, col4 = st.columns(4)
-
 col1.metric("Total Employees", total)
 col2.metric("Employees Left", attrition)
 col3.metric("Attrition Rate", f"{rate:.2f}%")
-col4.metric("Avg Monthly Income", f"{avg_income:.0f}")
+col4.metric("Avg Monthly Income", f"{avg_income:.0f}" if total else "N/A")
 
-fig = px.pie(
-    filtered_df,
-    names="Attrition",
-    title="Employee Attrition"
-)
-line_data = (
-    filtered_df.groupby("YearsAtCompany")["MonthlyIncome"]
-    .mean()
-    .reset_index()
-)
+if total == 0:
+    st.warning("No employees match the selected filters.")
+else:
+    fig_pie = px.pie(
+        filtered_df,
+        names="AttritionLabel",
+        title="Employee Attrition",
+    )
+    st.plotly_chart(fig_pie, use_container_width=True)
 
-fig_line = px.line(
-    line_data,
-    x="YearsAtCompany",
-    y="MonthlyIncome",
-    title="Average Monthly Income by Years at Company",
-    markers=True
-)
+    dept = filtered_df.groupby("Department").size().reset_index(name="Employees")
+    fig_dept = px.bar(
+        dept,
+        x="Department",
+        y="Employees",
+        color="Department",
+        title="Employees by Department",
+    )
 
-fig_line.update_layout(
-    xaxis_title="Years at Company",
-    yaxis_title="Average Monthly Income",
-    template="plotly_white"
-)
+    line_data = (
+        filtered_df.groupby("YearsAtCompany")["MonthlyIncome"]
+        .mean()
+        .reset_index()
+    )
+    fig_line = px.line(
+        line_data,
+        x="YearsAtCompany",
+        y="MonthlyIncome",
+        title="Average Monthly Income by Years at Company",
+        markers=True,
+    )
+    fig_line.update_layout(
+        xaxis_title="Years at Company",
+        yaxis_title="Average Monthly Income",
+        template="plotly_white",
+    )
+    st.plotly_chart(fig_line, use_container_width=True)
+    st.plotly_chart(fig_dept, use_container_width=True)
 
-st.plotly_chart(fig_line, use_container_width=True)
-st.plotly_chart(fig, use_container_width=True)
-dept = filtered_df.groupby("Department").size().reset_index(name="Employees")
+    job = filtered_df.groupby("JobRole").size().reset_index(name="Count")
+    fig_job = px.bar(
+        job,
+        x="JobRole",
+        y="Count",
+        color="Count",
+        title="Employees by Job Role",
+    )
+    st.plotly_chart(fig_job, use_container_width=True)
 
-fig = px.bar(
-    dept,
-    x="Department",
-    y="Employees",
-    color="Department",
-    title="Employees by Department"
-)
+    fig_ot = px.histogram(
+        filtered_df,
+        x="OverTime",
+        color="AttritionLabel",
+        barmode="group",
+        title="Attrition by OverTime",
+    )
+    st.plotly_chart(fig_ot, use_container_width=True)
 
-st.plotly_chart(fig, use_container_width=True)
-job = filtered_df.groupby("JobRole").size().reset_index(name="Count")
+st.subheader("Machine Learning Model")
+st.write("**Model:** XGBoost")
 
-fig = px.bar(
-    job,
-    x="JobRole",
-    y="Count",
-    color="Count",
-    title="Employees by Job Role"
-)
+with st.spinner("Training model..."):
+    results = get_model_results()
 
-st.plotly_chart(fig, use_container_width=True)
-fig = px.histogram(
-    filtered_df,
-    x="OverTime",
-    color="Attrition",
-    barmode="group"
-)
-
-st.plotly_chart(fig, use_container_width=True)
-
-st.header("🤖 Employee Attrition Prediction")
-
-st.write("Machine Learning Model: Logistic Regression")
-
-st.success("Model Accuracy: 85.37%")
+st.success(f"Model Accuracy: {results['accuracy'] * 100:.2f}%")
 
 st.subheader("Confusion Matrix")
-
 cm_df = pd.DataFrame(
-    [[246, 1],
-     [42, 5]],
+    results["cm"],
     index=["Actual Stay", "Actual Leave"],
-    columns=["Predicted Stay", "Predicted Leave"]
+    columns=["Predicted Stay", "Predicted Leave"],
 )
-
 st.dataframe(cm_df)
 
-from classification_model import accuracy, cm, report
-st.success(f"Model Accuracy: {accuracy*100:.2f}%")
-
-cm_df = pd.DataFrame(
-    cm,
-    index=["Actual Stay","Actual Leave"],
-    columns=["Predicted Stay","Predicted Leave"]
-)
-
-st.dataframe(cm_df)
-
-st.dataframe(pd.DataFrame(report).transpose())
+st.subheader("Classification Report")
+report_df = pd.DataFrame(results["report"]).transpose()
+st.dataframe(report_df)
