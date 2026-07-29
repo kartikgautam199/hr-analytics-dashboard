@@ -127,7 +127,7 @@ cm_df = pd.DataFrame(
 
 st.dataframe(cm_df)
 
-from classification_model.py import accuracy, cm, report
+from classification_model import accuracy, cm, report
 st.success(f"Model Accuracy: {accuracy*100:.2f}%")
 
 cm_df = pd.DataFrame(
@@ -139,12 +139,3 @@ cm_df = pd.DataFrame(
 st.dataframe(cm_df)
 
 st.dataframe(pd.DataFrame(report).transpose())
-
-st.subheader("Model Summary")
-
-st.write("""
-- Algorithm Used: Logistic Regression
-- Dataset: IBM HR Analytics Employee Attrition
-- Accuracy: 85.37%
-- Objective: Predict whether an employee is likely to leave the company.
-""")
