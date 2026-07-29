@@ -2,136 +2,110 @@ import pandas as pd
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import (
-    accuracy_score,
-    confusion_matrix,
-    classification_report
-)
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
 
 from xgboost import XGBClassifier
 
-# ===================================
-# Load Dataset
-# ===================================
+DATA_PATH = "WA_Fn-UseC_-HR-Employee-Attrition-encoded.xls"
 
-df = pd.read_csv("WA_Fn-UseC_-HR-Employee-Attrition.csv")
 
-# ===================================
-# Drop Unnecessary Columns
-# ===================================
+def load_data(path: str = DATA_PATH) -> pd.DataFrame:
+    """Load the HR dataset.
 
-drop_cols = [
-    "EmployeeCount",
-    "EmployeeNumber",
-    "Over18",
-    "StandardHours"
-]
+    NOTE: despite the .xls extension, this file's contents are plain CSV
+    text, not a real Excel binary/OOXML file. pd.read_excel() will fail
+    (or need an engine that doesn't apply here) — pd.read_csv() is correct.
+    """
+    return pd.read_csv(path)
 
-df.drop(columns=drop_cols, inplace=True)
 
-# ===================================
-# Encode Target Variable
-# ===================================
+def train_model(path: str = DATA_PATH) -> dict:
+    """Train the XGBoost attrition classifier and return model + metrics.
 
-df["Attrition"] = df["Attrition"].map({
-    "No": 0,
-    "Yes": 1
-})
+    Wrapped in a function (rather than running at import time) so that
+    app.py can cache the trained model with st.cache_resource instead of
+    retraining on every Streamlit rerun.
+    """
+    df = load_data(path)
 
-# ===================================
-# Encode Categorical Features
-# ===================================
+    # Drop columns that carry no predictive signal
+    df = df.drop(
+        columns=["EmployeeCount", "EmployeeNumber", "Over18", "StandardHours"],
+        errors="ignore",
+    )
 
-encoder = LabelEncoder()
+    # Encode categorical (string) columns. Attrition is already 0/1 in this
+    # dataset, so it's left untouched here and just cast to int below.
+    label_encoders = {}
+    for col in df.columns:
+        if col == "Attrition":
+            continue
+        if df[col].dtype.kind == "O":
+            le = LabelEncoder()
+            df[col] = le.fit_transform(df[col])
+            label_encoders[col] = le
 
-for col in df.columns:
+    X = df.drop("Attrition", axis=1)
+    y = df["Attrition"].astype(int)
 
-    if df[col].dtype == "object":
+    X_train, X_test, y_train, y_test = train_test_split(
+        X,
+        y,
+        test_size=0.20,
+        random_state=42,
+        stratify=y,
+    )
 
-        df[col] = encoder.fit_transform(df[col])
+    model = XGBClassifier(
+        n_estimators=300,
+        learning_rate=0.05,
+        max_depth=4,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        objective="binary:logistic",
+        eval_metric="logloss",
+        random_state=42,
+    )
+    model.fit(X_train, y_train)
 
-# ===================================
-# Features and Target
-# ===================================
+    y_pred = model.predict(X_test)
 
-X = df.drop("Attrition", axis=1)
+    accuracy = accuracy_score(y_test, y_pred)
+    cm = confusion_matrix(y_test, y_pred)
+    report = classification_report(y_test, y_pred, output_dict=True)
 
-y = df["Attrition"]
+    return {
+        "model": model,
+        "accuracy": accuracy,
+        "cm": cm,
+        "report": report,
+        "label_encoders": label_encoders,
+        "feature_names": X.columns.tolist(),
+    }
 
-# ===================================
-# Train Test Split
-# ===================================
 
-X_train, X_test, y_train, y_test = train_test_split(
-    X,
-    y,
-    test_size=0.20,
-    random_state=42,
-    stratify=y
-)
+if __name__ == "__main__":
+    # Standalone run: `python classification_model.py` — trains the model
+    # once and prints results to the terminal.
+    results = train_model()
 
-# ===================================
-# XGBoost Model
-# ===================================
+    print("\n========== XGBOOST MODEL ==========")
+    print(f"Accuracy : {results['accuracy'] * 100:.2f}%")
 
-model = XGBClassifier(
+    print("\nConfusion Matrix")
+    print(results["cm"])
 
-    n_estimators=500,
-    learning_rate=0.03,
-    max_depth=4,
-    subsample=0.9,
-    colsample_bytree=0.8,
-    min_child_weight=2,
-    gamma=0.1,
-    objective="binary:logistic",
-    eval_metric="logloss",
-    random_state=42
-)
+    print("\nClassification Report")
+    print(pd.DataFrame(results["report"]).transpose())
 
-# ===================================
-# Train
-# ===================================
-
-model.fit(X_train, y_train)
-
-# ===================================
-# Prediction
-# ===================================
-
-y_pred = model.predict(X_test)
-
-# ===================================
-# Results
-# ===================================
-
-accuracy = accuracy_score(y_test, y_pred)
-
-cm = confusion_matrix(y_test, y_pred)
-
-report = classification_report(
-    y_test,
-    y_pred,
-    output_dict=True
-)
-
-print("\n========== XGBoost ==========")
-print(f"Accuracy : {accuracy*100:.2f}%")
-
-print("\nConfusion Matrix")
-print(cm)
-
-print("\nClassification Report")
-print(classification_report(y_test, y_pred))
-
-# ===================================
-# Sample Prediction
-# ===================================
-
-sample = X.iloc[[0]]
-
-prediction = model.predict(sample)
-
-if prediction[0] == 1:
-    print("\nPrediction : Employee is likely to Leave")
-else:
-    print("\nPrediction : Employee is likely to Stay")
+    sample = results["feature_names"]
+    df = load_data()
+    print("\nSample prediction on first row:")
+    X_sample = df.drop(
+        columns=["Attrition", "EmployeeCount", "EmployeeNumber", "Over18", "StandardHours"],
+        errors="ignore",
+    ).iloc[[0]].copy()
+    for col, le in results["label_encoders"].items():
+        X_sample[col] = le.transform(X_sample[col])
+    prediction = results["model"].predict(X_sample)
+    print("Employee is likely to Leave" if prediction[0] == 1 else "Employee is likely to Stay")
