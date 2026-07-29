@@ -127,7 +127,7 @@ cm_df = pd.DataFrame(
 
 st.dataframe(cm_df)
 
-from classification_model import accuracy, cm, report
+from classification_model.py import accuracy, cm, report
 st.success(f"Model Accuracy: {accuracy*100:.2f}%")
 
 cm_df = pd.DataFrame(
