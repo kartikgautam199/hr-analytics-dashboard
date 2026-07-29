@@ -127,6 +127,19 @@ cm_df = pd.DataFrame(
 
 st.dataframe(cm_df)
 
+from classification_model import accuracy, cm, report
+st.success(f"Model Accuracy: {accuracy*100:.2f}%")
+
+cm_df = pd.DataFrame(
+    cm,
+    index=["Actual Stay","Actual Leave"],
+    columns=["Predicted Stay","Predicted Leave"]
+)
+
+st.dataframe(cm_df)
+
+st.dataframe(pd.DataFrame(report).transpose())
+
 st.subheader("Model Summary")
 
 st.write("""
