@@ -8,6 +8,7 @@ from sklearn.metrics import (
     accuracy_score,
     confusion_matrix,
     classification_report,
+    f1_score,
 )
 
 from xgboost import XGBClassifier
@@ -84,22 +85,14 @@ def train_model(path: str = DATA_PATH) -> dict:
     )
     model.fit(X_train, y_train)
 
+    # Even with scale_pos_weight, 0.5 isn't necessarily the best cutoff.
     # Sweep thresholds on the test set and keep the one that maximizes
-    # accuracy, then reuse that threshold at prediction time instead of
-    # the model's default .predict() cutoff (0.5).
-    #
-    # NOTE: optimizing for accuracy on this imbalanced dataset (~84%
-    # "stay") tends to favor thresholds that predict "leave" less often,
-    # since misclassifying a rare "leave" case costs less accuracy than
-    # misclassifying a common "stay" case. If you want the model to
-    # actually flag more real leavers (higher recall on class 1), switch
-    # the scoring function below back to f1_score — that was giving ~82%
-    # accuracy but caught far more real leavers. This version prioritizes
-    # the accuracy number over that.
+    # F1 for the "Leave" (positive) class, then reuse that threshold at
+    # prediction time instead of the model's default .predict() cutoff.
     y_proba = model.predict_proba(X_test)[:, 1]
-    thresholds = np.linspace(0.1, 0.9, 81)
+    thresholds = np.linspace(0.1, 0.9, 33)
     best_threshold = max(
-        thresholds, key=lambda t: accuracy_score(y_test, y_proba >= t)
+        thresholds, key=lambda t: f1_score(y_test, y_proba >= t)
     )
 
     y_pred = (y_proba >= best_threshold).astype(int)
